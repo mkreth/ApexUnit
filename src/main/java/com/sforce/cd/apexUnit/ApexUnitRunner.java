@@ -111,6 +111,7 @@ public class ApexUnitRunner {
 		}
 		if (!skipCodeCoverageComputation) {
 			ApexCodeCoverageReportGenerator.generateHTMLReport(apexClassCodeCoverageBeans);
+			ApexCodeCoverageReportGenerator.generateCoberturaCoverageReport(apexClassCodeCoverageBeans);
 
 			// validating the code coverage metrics against the thresholds
 			// provided by the user

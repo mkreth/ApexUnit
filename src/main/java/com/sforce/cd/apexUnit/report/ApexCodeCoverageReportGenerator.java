@@ -17,9 +17,25 @@ package com.sforce.cd.apexUnit.report;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.io.Writer;
 import java.util.List;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.OutputKeys;
+import javax.xml.transform.Transformer;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.DocumentType;
+import org.w3c.dom.Element;
 
 import com.sforce.cd.apexUnit.ApexUnitUtils;
 import com.sforce.cd.apexUnit.arguments.CommandLineArguments;
@@ -217,6 +233,129 @@ public class ApexCodeCoverageReportGenerator {
 		htmlBuilder.append("</html>");
 
 		createHTMLReport(htmlBuilder.toString());
+	}
+
+	public static void generateCoberturaCoverageReport(ApexClassCodeCoverageBean[] apexClassCodeCoverageBeans) {
+		try (FileWriter fw = new FileWriter("Cobertura4Apex.xml")) {
+			Document doc = createCoberturaCoverageDocument();
+			
+			generateCoberturaCoverageReport(doc, apexClassCodeCoverageBeans);
+			
+			writeCoberturaCoverageReport(doc, fw);
+		}
+		catch (IOException e) {
+			ApexUnitUtils
+				.shutDownWithDebugLog(e, "IOException encountered during creation of Cobertura Coverage Report file Cobertura4Apex.xml");
+		}
+		catch (ParserConfigurationException e) {
+			ApexUnitUtils
+				.shutDownWithDebugLog(e, "ParserConfigurationException encountered during creation of Cobertura Coverage Report XML document");
+		}
+		catch (TransformerException e) {
+			ApexUnitUtils
+				.shutDownWithDebugLog(e, "TransformerException encountered during generation of Cobertura Coverage Report output");
+		}
+		
+	}
+	
+	private static Document createCoberturaCoverageDocument() throws ParserConfigurationException {
+		DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+		DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
+		DocumentType documentType = documentBuilder.getDOMImplementation().createDocumentType("coverage", null, "http://cobertura.sourceforge.net/xml/coverage-03.dtd");
+		Document document = documentBuilder.getDOMImplementation().createDocument(null, "coverage", documentType);
+		
+		return document;
+	}
+	
+	private static void generateCoberturaCoverageReport(Document doc, ApexClassCodeCoverageBean[] apexClassCodeCoverageBeans) {
+		Element coverageElement = doc.getDocumentElement();
+		coverageElement.setAttribute("timestamp", Long.toString(System.currentTimeMillis()));
+		coverageElement.setAttribute("version", "0.0");
+		coverageElement.setAttribute("branch-rate", "0.0");
+		coverageElement.setAttribute("line-rate", "0.0");
+		
+		Element sourcesElement = doc.createElement("sources");
+		coverageElement.appendChild(sourcesElement);
+		
+		Element sourceElement = doc.createElement("source");
+		sourceElement.appendChild(doc.createTextNode("Salesforce.com"));
+		sourcesElement.appendChild(sourceElement);
+		
+		Element packagesElement = doc.createElement("packages");
+		coverageElement.appendChild(packagesElement);
+		
+		Element packageElement = doc.createElement("package");
+		packageElement.setAttribute("name", "Bayer Veeva");
+		packageElement.setAttribute("complexity", "0.0");
+		packageElement.setAttribute("branch-rate", "0.0");
+		packagesElement.appendChild(packageElement);
+		
+		Element classesElement = doc.createElement("classes");
+		packageElement.appendChild(classesElement);
+		
+		int totalLinesCovered = 0;
+		int totalLinesUncovered = 0;
+		
+		for (ApexClassCodeCoverageBean apexClassCodeCoverageBean : apexClassCodeCoverageBeans) {
+			totalLinesCovered += apexClassCodeCoverageBean.getNumLinesCovered();
+			totalLinesUncovered += apexClassCodeCoverageBean.getNumLinesUncovered();
+			
+			classesElement.appendChild(addClassCoverage(apexClassCodeCoverageBean, doc));
+		}
+		
+		int totalLines = totalLinesCovered + totalLinesUncovered;
+		
+		double coveragePercentage = totalLines > 0 ? 100.0 * totalLinesCovered / totalLines : 100.0;
+		
+		packageElement.setAttribute("line-rate", Double.toString(coveragePercentage));
+	}
+	
+	private static void writeCoberturaCoverageReport(Document doc, Writer wr) throws TransformerException {
+		TransformerFactory transformerFactory = TransformerFactory.newInstance();
+		Transformer transformer = transformerFactory.newTransformer();
+		transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "no");
+		transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+		transformer.setOutputProperty(OutputKeys.DOCTYPE_SYSTEM, doc.getDoctype().getSystemId());
+		
+		transformer.transform(new DOMSource(doc), new StreamResult(wr));
+	}
+	
+	private static Element addClassCoverage(ApexClassCodeCoverageBean apexClassCodeCoverageBean, final Document doc) {
+		Element classElement = doc.createElement("class");
+		
+		classElement.setAttribute("name", apexClassCodeCoverageBean.getApexClassName());
+		classElement.setAttribute("filename", apexClassCodeCoverageBean.getApexClassName());
+		classElement.setAttribute("complexity", "0.0");
+		classElement.setAttribute("branch-rate", "0.0");
+		classElement.setAttribute("line-rate", Double.toString(apexClassCodeCoverageBean.getCoveragePercentage()));
+		
+		Element methodsElement = doc.createElement("methods");
+		classElement.appendChild(methodsElement);
+		
+		Element linesElement = doc.createElement("lines");
+		classElement.appendChild(linesElement);
+		
+		addLinesCoverage(apexClassCodeCoverageBean, linesElement);
+		
+		return classElement;
+	}
+	
+	private static void addLinesCoverage(ApexClassCodeCoverageBean apexClassCodeCoverageBean, Element linesElement) {
+		Document doc = linesElement.getOwnerDocument();
+		
+		for (Long location : apexClassCodeCoverageBean.getUncoveredLinesList()) {
+			Element lineElement = doc.createElement("line");
+			lineElement.setAttribute("number", Long.toString(location));
+			lineElement.setAttribute("hits", "0");
+			linesElement.appendChild(lineElement);
+		}
+		
+		for (Long location : apexClassCodeCoverageBean.getCoveredLinesList()) {
+			Element lineElement = doc.createElement("line");
+			lineElement.setAttribute("number", Long.toString(location));
+			lineElement.setAttribute("hits", "1");
+			linesElement.appendChild(lineElement);
+		}
 	}
 
 	private static void createHTMLReport(String htmlBuffer) {
