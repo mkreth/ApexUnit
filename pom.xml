@@ -39,6 +39,10 @@
        		<url>https://oss.sonatype.org/content/repositories/releases</url>
    		 </repository>
 	</repositories> 
+	<properties>
+		<maven.compiler.source>1.7</maven.compiler.source>
+		<maven.compiler.target>1.7</maven.compiler.target>
+	</properties>
 	<build>
 		<defaultGoal>deploy</defaultGoal>
 		<sourceDirectory>src/main/java</sourceDirectory>
